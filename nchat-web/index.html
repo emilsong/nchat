@@ -1,0 +1,335 @@
+<!doctype html>
+<html>
+<head>
+<title>Socket.io Test</title>
+<link rel="stylesheet" href="css/font-awesome.css" />
+
+<script src="http://127.0.0.1:8080/socket.io/socket.io.js"></script>
+<script src="http://libs.baidu.com/jquery/1.9.1/jquery.min.js"></script>
+<style>
+*{margin:0;padding:0}
+#login div{float:left; padding:10px; }
+.photo img{width:60px; height:60px; border-radius:30px; cursor:pointer}
+#login p{display:block; text-align:center;}
+#login .name{font-size:12px; padding-top:5px;}
+#login i{font-size:16px; margin-right:3px;}
+
+#chatlist{width:600px; height:300px; border:1px solid #ccc; overflow-y:scroll; float:left}
+#userlist{float:left}
+#chatarea{width:400px;}
+#chatinput{clear:both}
+</style>
+</head>
+<body>
+
+<h1>Test</h1>
+
+<div id="user"><p class="photo"><img/></p><p class="name"></p><p class="song"></p></div>
+
+<div id="dj">
+麦序：<button>抢麦</button>
+</div>
+<div id="chatmusic">
+<input type="text" id="musicinput" placeholder="输入歌曲名称"/><button id="search"/>搜索</button>
+<ul></ul>
+</div>
+
+<div><p id="status">Waiting for input</p></div>
+
+<button id="connect" onClick='connect()'/>Connect</button>
+<button id="disconnect" onClick='disconnect()'>Disconnect</button>
+
+<br/>
+<button id="playmusic" onClick='play()'/>播放音乐</button>
+<button  onClick='javascript:player.pause()'/>暂停播放</button>
+<button  onClick='javascript:player.play()'/>继续播放</button>
+<button  onClick='javascript:player.volume = 0;'/>静音</button>
+<button  onClick='javascript:player.volume = 1;'/>打开音量</button>
+<button id="showLogin"/>登录</button>
+<div>
+<ul id="chatlist"></ul>
+<ul id="userlist"></ul>
+</div>
+<div id="chatinput">
+<select id="chatuser"><option value="">ALL</option></select>
+<input id="chatarea" type="text"/><button id="send"/>Send Message</button>
+</div>
+
+
+
+
+<audio id="player"></audio>
+
+<div id="login"></div>
+<div><p id="message"></p></div>
+<script>
+
+
+var tool = {};
+tool.formatTime = function(value) {
+		var sec = Number(value/1000);
+        var min = 0;
+        var hour = 0;
+        //alert(sec);
+        if(sec > 60) {
+        	min = Number(sec/60);
+        	sec = Number(sec%60);
+        	//alert(min+"-"+sec);
+        	if(min > 60) {
+        		hour = Number(min/60);
+        		min = Number(sec%60);
+        	}
+        }
+        var secTemp =  String( parseInt(sec));
+        if(secTemp.length==1)
+        	secTemp = "0"+secTemp;
+        
+        var result = secTemp;
+        var minTemp = String( parseInt(min));
+        if(minTemp.length==1)
+        	minTemp = "0"+minTemp;
+		result = minTemp+":"+result;
+
+        if(hour > 0) {
+        	result = ""+parseInt(hour)+":"+result;
+        }
+        return result;
+};
+tool.setCookie = function(c_name,value,hour){
+	var min = hour*60;
+	var exp = new Date();
+	exp.setTime(exp.getTime() + min*60*1000);
+	
+	document.cookie = c_name + "="+ escape (value) + ";expires=" + exp.toGMTString()+"; path=/;";
+}
+
+
+tool.getCookie = function(c_name) {  
+	if (document.cookie.length>0) {  
+		c_start=document.cookie.indexOf(c_name + "=");  
+		if (c_start!=-1){   
+			c_start=c_start + c_name.length+1 ;  
+			c_end=document.cookie.indexOf(";",c_start);  
+			if (c_end==-1) c_end=document.cookie.length;  
+				return unescape(document.cookie.substring(c_start,c_end));  
+		}   
+	}  
+	return "";  
+}  
+
+tool.setObject = function setObject(key, object) {
+    localStorage[key] = JSON.stringify(object);
+    return object;
+};
+
+tool.getObject = function getObject(key) {
+    if (localStorage[key] == undefined)
+        return undefined;
+
+    return JSON.parse(localStorage[key]);
+};
+
+
+var user = {};
+var userlist = [];
+var socket;
+var firstconnect = true;
+var player = document.getElementById("player");
+var song = {};
+ 
+function connect() {
+    if(firstconnect) {
+        socket = io.connect("http://127.0.0.1:8080");
+ 
+        socket.on('message', function(data){
+        	message(data);
+        	var mess = JSON.parse(data);
+        	switch(mess.type){
+        		case "audio-play":
+        			player.src = mess.data.url;
+        			player.play();
+					song = mess.data;
+					setInterval(function(){
+						var left = Math.ceil(song.duration - (player.currentTime*1000));
+						$("#playmusic").text(tool.formatTime(left));
+					},1000);
+        		break;
+				case "chat-all":
+				case "chat-to":
+					if(mess.uid!=user.id)
+						$("#chatlist").prepend("<li>"+mess.uid+":"+mess.data+"</li>");
+				break;
+				case "user-get":
+					userlist = mess.data;
+					var html = "";
+					for(var i=0;i<mess.data.length;i++){
+						html+='<li><a data-id="'+mess.data[i].id+'">'+mess.data[i].name+'</a></li>';
+					}
+					$("#userlist").html(html);
+				break;
+        	}
+        });
+        socket.on('connect', function(){ 
+			status_update("Connected to Server"); 
+			var data = {type:"user-login",data:user};
+			socket.send(JSON.stringify(data));
+		});
+        socket.on('disconnect', function(){ status_update("Disconnected from Server"); });
+        socket.on('reconnect', function(){ status_update("Reconnected to Server"); });
+        socket.on('reconnecting', function( nextRetry ){ status_update("Reconnecting in "
+        + nextRetry + " seconds"); });
+        socket.on('reconnect_failed', function(){ message("Reconnect Failed"); });
+ 
+        firstconnect = false;
+    } else {
+        socket.connect();
+    }
+}
+ 
+var chat = {};
+chat.toAll = function(message){
+	var data = {type:"chat-all",uid:user.id,data:message};
+	socket.send(JSON.stringify(data));
+}
+chat.to = function(uid,message){
+	var data = {type:"chat-to",uid:user.id,toid:uid,data:message};
+	socket.send(JSON.stringify(data));
+}
+ 
+function disconnect() {
+    socket.disconnect();
+}
+ 
+function message(data) {
+    document.getElementById('message').innerHTML = "Server says: " + data;
+	console.log(data);
+}
+ 
+function status_update(txt){
+    document.getElementById('status').innerHTML = txt;
+}
+ 
+function esc(msg){
+    return msg.replace(/</g, '<').replace(/>/g, '>');
+}
+ 
+ 
+$("#send").click(function(){
+	var message = {type:"chat-all"};
+	if($("#chatuser").val()!=""){
+		message.type = "chat-to";
+		message.toid = $("#chatuser").val();
+	}
+	message.uid = user.id;
+	message.data = $("#chatarea").val();
+	message.name = user.name;
+	message.img = user.img;
+	socket.send(JSON.stringify(message));
+	$("#chatarea").val("");
+	$("#chatlist").prepend("<li>"+message.uid+":"+message.data+"</li>");
+});
+
+$("#userlist").on("click","a",function(){
+	var This = $(this);
+	if($("#chatuser option[value='"+This.data("id")+"']").length==0){
+		$("#chatuser").append('<option value="'+This.data("id")+'" selected>'+This.text()+'</option>');
+	}else{
+		$("#chatuser option[value='"+This.data("id")+"']").attr("selected","selected");
+	}
+});
+
+
+$("#chatmusic ul").on("click","li",function(){
+	window.postMessage({type:"MUSIC_GET",id:$(this).data("id")},"*");
+});
+
+
+
+
+$("#dj button").click(function(){
+	var btn = $(this);
+	
+});
+
+
+function play(url){
+	var data = {
+		type:"audio-play",
+		data:{
+			url:url||"http://m1.music.126.net/15SO8H57d36vDZmqG_MbLw==/5853799906501854.mp3",
+			id:28568244,
+			duration:294269,
+			uid:user.id,
+			uname:user.name
+		}
+	};
+	console.log(data);
+	socket.send(JSON.stringify(data));
+}
+
+
+window.addEventListener("message", function(event) {
+    // We only accept messages from ourselves
+    if (event.source != window)
+      return;
+
+    if (event.data.type && (event.data.type == "FROM_PAGE")) {
+      console.log("page script received: " + event.data.text);
+    }
+	if (event.data.type && (event.data.type == "message")) {
+      console.log("from extension: " + event.data.lyric);
+    }
+	
+	if (event.data.type && (event.data.type == "MUSIC_GOT")) {
+      //console.log(event.data.data);
+		var song = event.data.data.songs[0];
+		$("#user .song").attr("id",song.id).text(song.name);
+		debugger;
+		var data = {
+			type:"audio-play",
+			data:{
+				url:song.mp3Url,
+				name:song.name,
+				id:song.id,
+				duration:song.duration,
+				uid:user.id,
+				uname:user.name
+			}
+		};
+		socket.send(JSON.stringify(data));
+    }
+	
+}, false);
+
+
+
+
+
+if(tool.getCookie("cid")=="")
+	$("#showLogin").show();
+else{
+	user = tool.getObject("user");
+	$("#showLogin").hide();
+	$("#user img").attr("src",user.img);
+	$("#user .name").text(user.name);
+}
+
+	
+$("#showLogin").click(function(){
+	window.postMessage({type:"LOGIN"},"*");
+});
+
+
+$("#login").on("click",".photo",function(){
+	user.id = $(this).data("id");
+	user.name = $(this).data("name");
+	user.img = $(this).children("img").attr("src");
+	tool.setObject("user",user);
+	tool.setCookie("cid",user.id);
+	$("#login").hide();
+	alert("登录成功");
+})
+</script>
+
+</body>
+</html>

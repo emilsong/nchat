@@ -1,0 +1,37 @@
+{
+    "name": "Todo Dev",
+	"short_name":"todo",
+    "version": "0.1",
+    "manifest_version": 2,
+    "description": "support cross-site requesting, playing audio, etc",
+
+    "icons": {
+        "16": "logo.png",
+        "48": "logo.png",
+        "128": "logo.png"
+    },
+	
+
+	"content_scripts": [{  
+         "matches": ["http://qihuo.d.xiaonei.com/*","http://todo.fed.d.xiaonei.com/*","http://test.com/*"],   
+         "js": ["js/inject.js"], 
+		 "run_at" :"document_idle",
+         "all_frames": false   
+    }],  
+	
+	
+    "background": {
+        "scripts": ["js/jquery.min.js","js/lib.js","js/background.js"]
+    },
+
+
+    "permissions": [
+        "notifications",
+        "cookies",
+		"tabs",
+		"http://*/*",
+		"https://*/*",
+		"webRequest",
+        "webRequestBlocking"
+    ]
+}
